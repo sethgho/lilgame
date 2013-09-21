@@ -58,7 +58,6 @@ function man (opts) {
     opts = opts || {};
     
     // instance members
-    this.pos = {};
     this.x = opts.x || canvas.width/1.3;
     this.y = opts.y || canvas.height/2;
     this.width = 16;
@@ -67,6 +66,7 @@ function man (opts) {
     this.accy = 0;
     this.velx = 0;
     this.vely = 0;
+    this.respawnDelay = 100000;
     this.state = 'air';
 }
 
@@ -74,6 +74,19 @@ function man (opts) {
 man.prototype.maxAcc = 0.5;
 man.prototype.maxVel = 3;
 man.prototype.accInc = 0.08;
+man.prototype.lives = 3;
+
+man.prototype.respawn = function(opts) {
+    opts = opts || {};
+    this.x = platforms[1].x + (platforms[1].length/2);
+    this.y = platforms[1].y - this.height * 2;    
+    this.accx = 0;
+    this.accy = 0;
+    this.velx = 0;
+    this.vely = 0;
+    this.respawnDelay = 100000;
+    this.state = 'air';
+}
 
 // class methods/functions
 man.prototype.render = function () {
@@ -83,8 +96,14 @@ man.prototype.render = function () {
     ctx.restore();
 };
 man.prototype.die = function () {
-    gameon = false;
-    man.state = "dead";
+    this.lives--;        
+    if(this.lives === 0)
+    {
+        gameon = false;        
+        this.state = "dead";
+    }else {
+        this.state = 'respawn';
+    }
 };
 man.prototype.jump = function () {
     console.log('jump!');
@@ -109,15 +128,24 @@ man.prototype.right = function () {
     if (this.accx > this.maxAcc) { this.acc = this.maxAcc; }
     if (this.accx < -this.maxAcc) { this.accx = -this.maxAcc; }
 };
-man.prototype.update = function () {
+man.prototype.update = function (timeDiff) {
     var foundground = false
     ,   currplatform
     ;
 
     if (this.y > canvas.height || this.x + this.width < 0) {
-        this.die();
-        console.log('die');
-        return;
+        if(this.state === 'respawn'){
+            this.respawnDelay -= timeDiff;
+            if(this.respawnDelay <= 0){
+                this.respawn();
+            }   
+            return;
+        }else {
+            this.die();
+            console.log('die');
+            return;
+        }
+        
     }
     
     // See if man is on a platform
@@ -171,6 +199,14 @@ man.prototype.update = function () {
 };
 
 function update () {
+    // clear canvas
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+    
+    //update/draw platforms
+    ctx.save();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#f00';
+
     if (gameon) {
         // update timer
         ticks++;
@@ -188,14 +224,7 @@ function update () {
                 }
             }
         }
-        
-        // clear canvas
-        ctx.clearRect(0,0,canvas.width, canvas.height);
-        
-        //update/draw platforms
-        ctx.save();
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = '#f00';
+        deadPlatformIndexes = [];
         for(i=0; i<platforms.length; i++) {
             // move platform according to game speed
             platforms[i].x -= speed;
@@ -205,10 +234,19 @@ function update () {
             ctx.moveTo(platforms[i].x, platforms[i].y);
             ctx.lineTo(platforms[i].x + platforms[i].length, platforms[i].y);
             ctx.stroke();
+
+            if(platforms[i].x < -platforms[i].length){
+                deadPlatformIndexes.push(i);
+            }
+        }
+
+        for(i=0; i<deadPlatformIndexes.length; i++){
+            platforms.splice(deadPlatformIndexes[i],1);
+            console.log("Removing platform! Current count:" + platforms.length);
         }
 
         // update man
-        myman.update();
+        myman.update(timer);
         
         //gen new platform?
         if (ticks % nextPlat === 0) {
@@ -219,33 +257,38 @@ function update () {
 
         // draw man
         myman.render();
-        
+    } else {
+        ctx.save();
+        ctx.fillStyle = 'red';
+        ctx.font = '30pt Calibri';
+        ctx.textAlign = 'center';
+        ctx.fillText("Game Over!", canvas.width/2, canvas.height/2);
+        ctx.restore();
+    }        
         // draw score/timer
         ctx.fillStyle = 'white';
         ctx.fillText(timer/1000, 20,20);
+        ctx.fillText("Lives: " + myman.lives, canvas.width - 40, 20 )
         
         // debug -- draw man state
         ctx.fillStyle = 'yellow';
-        ctx.fillText(myman.state, canvas.width - 50, canvas.height - 20);
-        
+        ctx.fillText(myman.state, canvas.width - 50, canvas.height - 20);        
         // pop context mods
         ctx.restore();
 
         // request another frame        
         window.requestAnimationFrame(update);
-    } else {
-        // game over man, game over!
-    }    
+    
 }
 
 // keys
 window.addEventListener('keydown', function (e) {
-	var code = e.which || e.keyCode || e.key;
-	latch[code] = true;
+    var code = e.which || e.keyCode || e.key;
+    latch[code] = true;
 });
 window.addEventListener('keyup', function (e) {
-	var code = e.which || e.keyCode || e.key;
-	delete latch[code];
+    var code = e.which || e.keyCode || e.key;
+    delete latch[code];
 });
 
 
